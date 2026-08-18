@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>驗貨引擎監控台</title>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e;
+    --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4;
+    --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7;
+      --muted: #898781; --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang TC", "Noto Sans TC", sans-serif;
+    font-size: 15px; line-height: 1.6; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+  h1 { font-size: 20px; margin: 0; }
+  #updated { color: var(--muted); font-size: 13px; }
+  h2 { font-size: 15px; margin: 28px 0 10px; color: var(--ink-2); font-weight: 600; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .tile { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 12px 14px; }
+  .tile .k { font-size: 12px; color: var(--muted); }
+  .tile .v { font-size: 22px; font-weight: 700; margin-top: 2px; }
+  .tile .sub { font-size: 12px; color: var(--ink-2); }
+
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 14px; }
+  .scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; border-bottom: 1px solid var(--grid); padding: 4px 10px 6px 0; }
+  td { padding: 7px 10px 7px 0; border-bottom: 1px solid var(--grid); }
+  tr:last-child td { border-bottom: none; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  a { color: var(--s1); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--ink-2); margin: 8px 0 2px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+  svg text { font-family: inherit; }
+  #tip { position: fixed; pointer-events: none; background: var(--surface); border: 1px solid var(--ring);
+    border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 14px rgba(0,0,0,.15);
+    display: none; z-index: 10; max-width: 260px; }
+  #tip .t { color: var(--muted); font-size: 11.5px; }
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 52px; gap: 10px; align-items: center; font-size: 13px; margin: 6px 0; }
+  .bar-track { background: var(--grid); border-radius: 4px; height: 10px; overflow: hidden; }
+  .bar-fill { background: var(--s1); height: 100%; border-radius: 4px 0 0 4px; }
+  .bar-val { font-variant-numeric: tabular-nums; text-align: right; color: var(--ink-2); }
+  footer { margin-top: 36px; color: var(--muted); font-size: 12.5px; }
+  #err { color: var(--crit); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔍 驗貨引擎監控台</h1>
+    <span id="updated">載入中…</span>
+  </header>
+  <div id="err"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <h2>最新一輪</h2>
+  <div class="card scroll"><table id="latest"></table></div>
+
+  <h2>報價誤差走勢（bps，越低越準）</h2>
+  <div class="card">
+    <div class="legend" id="legend"></div>
+    <div id="chart"></div>
+  </div>
+
+  <h2>存活率（全部輪次）</h2>
+  <div class="card" id="uptime"></div>
+
+  <h2>鏈上封條</h2>
+  <div class="card" id="anchor">查詢中…</div>
+
+  <footer>
+    每小時自動探測（GitHub Actions）｜頁面每 5 分鐘自動刷新｜
+    <a href="https://github.com/X-master990/x402_authen">原始碼與存證</a>
+  </footer>
+</div>
+<div id="tip"></div>
+
+<script>
+const SERIES = [
+  { name: "coingecko(對照組)", label: "CoinGecko", css: "--s1" },
+  { name: "myceliasignal",     label: "Mycelia",   css: "--s2" },
+  { name: "vibesprings",       label: "Vibesprings", css: "--s3" },
+  { name: "apitoll",           label: "Apitoll",   css: "--s4" },
+  { name: "shizu",             label: "Shizu",     css: "--s5" },
+];
+const cvar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const USDC = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const WALLET = "0x7D431E7Eaeb55482fdF4B8962D18fEE3b02E1280";
+const fmtT = (iso) => new Date(iso).toLocaleString("zh-TW", { hour12: false, month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+
+function verdict(r) {
+  if (!r.tx && r.http_status !== 200) return { t: "死攤", c: "--crit", i: "✕" };
+  if (r.tx && r.http_status !== 200)  return { t: "收錢不出貨", c: "--crit", i: "🚩" };
+  if (r.err_bps == null && r.ref_usd != null) return { t: "出貨待驗", c: "--warn", i: "◐" };
+  if (r.err_bps == null) return { t: "有出貨", c: "--good", i: "✓" };
+  if (r.err_bps < 10) return { t: "準", c: "--good", i: "✓" };
+  if (r.err_bps < 50) return { t: "偏差", c: "--warn", i: "◐" };
+  return { t: "嚴重偏差", c: "--crit", i: "✕" };
+}
+
+async function rpc(method, params) {
+  const r = await fetch("https://mainnet.base.org", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  return (await r.json()).result;
+}
+
+async function load() {
+  const err = document.getElementById("err");
+  err.textContent = "";
+  let recs;
+  try {
+    const txt = await (await fetch("day1/log/probe-round-1.jsonl", { cache: "no-store" })).text();
+    recs = txt.split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  } catch (e) { err.textContent = "讀不到存證檔：" + e; return; }
+  recs.sort((a, b) => a.t_send.localeCompare(b.t_send));
+
+  // 依小時分輪
+  const rounds = new Map();
+  for (const r of recs) {
+    const k = r.t_send.slice(0, 13);
+    if (!rounds.has(k)) rounds.set(k, []);
+    rounds.get(k).push(r);
+  }
+  const keys = [...rounds.keys()].sort();
+  const latest = rounds.get(keys[keys.length - 1]);
+  const latestTime = latest[latest.length - 1].t_send;
+  const ageMin = Math.round((Date.now() - new Date(latestTime)) / 60000);
+  document.getElementById("updated").textContent =
+    `最新探測 ${fmtT(latestTime)}（${ageMin < 60 ? ageMin + " 分鐘前" : Math.round(ageMin / 60) + " 小時前"}）`;
+
+  // 花費與錢包
+  const spentAll = recs.filter((r) => r.tx).reduce((s, r) => s + (r.price_usd || 0), 0);
+  const perRound = spentAll / keys.length;
+  let usdc = null, eth = null;
+  try {
+    const bal = await rpc("eth_call", [{ to: USDC, data: "0x70a08231" + WALLET.slice(2).toLowerCase().padStart(64, "0") }, "latest"]);
+    usdc = parseInt(bal, 16) / 1e6;
+    eth = parseInt(await rpc("eth_getBalance", [WALLET, "latest"]), 16) / 1e18;
+  } catch {}
+  const daysLeft = usdc != null && perRound > 0 ? usdc / (perRound * 24) : null;
+
+  const tiles = [
+    { k: "累計輪次", v: keys.length, sub: recs.length + " 筆存證" },
+    { k: "累計探測費", v: "$" + spentAll.toFixed(2), sub: "每輪約 $" + perRound.toFixed(3) },
+    { k: "錢包 USDC", v: usdc != null ? "$" + usdc.toFixed(2) : "—",
+      sub: daysLeft != null ? "約可再燒 " + daysLeft.toFixed(1) + " 天" : "RPC 未回應" },
+    { k: "封條 gas (ETH)", v: eth != null ? eth.toFixed(6) : "—", sub: "Base 鏈上" },
+  ];
+  document.getElementById("tiles").innerHTML = tiles.map((t) =>
+    `<div class="tile"><div class="k">${t.k}</div><div class="v">${t.v}</div><div class="sub">${t.sub}</div></div>`).join("");
+  if (daysLeft != null && daysLeft < 3)
+    err.textContent = "⚠️ 錢包餘額不足三天，記得補 USDC 到 " + WALLET.slice(0, 8) + "…";
+
+  // 最新一輪表格
+  const rowsHtml = latest.map((r) => {
+    const v = verdict(r);
+    return `<tr>
+      <td>${r.name}</td>
+      <td><span class="pill" style="color:var(${v.c})"><span class="dot" style="background:var(${v.c})"></span>${v.i} ${v.t}</span></td>
+      <td class="num">${r.err_bps != null ? r.err_bps.toFixed(1) : "—"}</td>
+      <td class="num">${r.latency_ms} ms</td>
+      <td class="num">$${r.price_usd}</td>
+      <td>${r.tx ? `<a href="https://basescan.org/tx/${r.tx}" target="_blank" rel="noopener">收據↗</a>` : "—"}</td>
+    </tr>`;
+  }).join("");
+  document.getElementById("latest").innerHTML =
+    `<tr><th>攤販</th><th>狀態</th><th>誤差 bps</th><th>延遲</th><th>單價</th><th>鏈上</th></tr>` + rowsHtml;
+
+  drawChart(keys, rounds);
+  drawUptime(recs);
+  loadAnchor();
+}
+
+function drawChart(keys, rounds) {
+  const W = Math.min(document.querySelector(".wrap").clientWidth - 62, 940), H = 220;
+  const P = { l: 34, r: 10, t: 10, b: 22 };
+  const pts = SERIES.map((s) => keys.map((k) => {
+    const r = (rounds.get(k) || []).find((x) => x.name === s.name);
+    return r && r.err_bps != null ? r.err_bps : null;
+  }));
+  const flat = pts.flat().filter((v) => v != null);
+  const ymax = Math.max(5, Math.ceil(Math.max(...flat, 0) * 1.25));
+  const x = (i) => P.l + (keys.length === 1 ? (W - P.l - P.r) / 2 : (i / (keys.length - 1)) * (W - P.l - P.r));
+  const y = (v) => P.t + (1 - v / ymax) * (H - P.t - P.b);
+
+  let g = "";
+  const yt = [0, ymax / 2, ymax];
+  for (const v of yt) g += `<line x1="${P.l}" y1="${y(v)}" x2="${W - P.r}" y2="${y(v)}" stroke="var(--grid)" stroke-width="1"/>
+    <text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end" font-size="10.5" fill="var(--muted)">${v}</text>`;
+  const xt = keys.length > 1 ? [0, Math.floor((keys.length - 1) / 2), keys.length - 1] : [0];
+  for (const i of new Set(xt)) g += `<text x="${x(i)}" y="${H - 6}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${keys[i].slice(5, 13).replace("T", " ") + ":00"}</text>`;
+
+  let lines = "", dots = "";
+  SERIES.forEach((s, si) => {
+    const col = `var(${s.css})`;
+    let d = "", pen = false;
+    pts[si].forEach((v, i) => {
+      if (v == null) { pen = false; return; }
+      d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1) + " ";
+      pen = true;
+      dots += `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="3" fill="${col}"/>
+        <circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="11" fill="transparent" data-s="${s.label}" data-k="${keys[i]}" data-v="${v.toFixed(1)}" class="hit"/>`;
+    });
+    if (d) lines += `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  });
+
+  document.getElementById("chart").innerHTML =
+    `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="各攤販報價誤差走勢">${g}${lines}${dots}</svg>`;
+  document.getElementById("legend").innerHTML = SERIES.map((s) =>
+    `<span><span class="sw" style="background:var(${s.css})"></span>${s.label}</span>`).join("");
+
+  const tip = document.getElementById("tip");
+  document.querySelectorAll(".hit").forEach((c) => {
+    c.addEventListener("mouseenter", (e) => {
+      tip.style.display = "block";
+      tip.innerHTML = `<b>${c.dataset.s}</b> ${c.dataset.v} bps<div class="t">${c.dataset.k.replace("T", " ")}:00 該輪</div>`;
+    });
+    c.addEventListener("mousemove", (e) => {
+      tip.style.left = Math.min(e.clientX + 14, innerWidth - 240) + "px";
+      tip.style.top = (e.clientY + 14) + "px";
+    });
+    c.addEventListener("mouseleave", () => tip.style.display = "none");
+  });
+}
+
+function drawUptime(recs) {
+  const by = new Map();
+  for (const r of recs) {
+    if (!by.has(r.name)) by.set(r.name, { ok: 0, n: 0 });
+    const b = by.get(r.name); b.n++;
+    if (r.tx && r.http_status === 200) b.ok++;
+  }
+  document.getElementById("uptime").innerHTML = [...by.entries()]
+    .sort((a, b) => b[1].ok / b[1].n - a[1].ok / a[1].n)
+    .map(([n, b]) => {
+      const p = (100 * b.ok / b.n);
+      return `<div class="bar-row"><span>${n.replace("(對照組)", "")}</span>
+        <div class="bar-track"><div class="bar-fill" style="width:${p}%"></div></div>
+        <span class="bar-val">${p.toFixed(0)}%</span></div>`;
+    }).join("");
+}
+
+async function loadAnchor() {
+  const el = document.getElementById("anchor");
+  for (let d = 0; d < 4; d++) {
+    const date = new Date(Date.now() - d * 86400000).toISOString().slice(0, 10);
+    try {
+      const r = await fetch(`day1/anchors/${date}.json`, { cache: "no-store" });
+      if (!r.ok) continue;
+      const a = await r.json();
+      el.innerHTML = `最近封條：<b>${a.date}</b>｜封存 ${a.leaves} 筆｜root <code>${a.merkle_root.slice(0, 16)}…</code>｜
+        <a href="https://basescan.org/tx/${a.tx}" target="_blank" rel="noopener">鏈上驗證↗</a>`;
+      return;
+    } catch {}
+  }
+  el.textContent = "近四天沒有封條紀錄";
+}
+
+load();
+setInterval(load, 5 * 60 * 1000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>
