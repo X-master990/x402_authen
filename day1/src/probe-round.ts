@@ -32,23 +32,33 @@ const payFetch = wrapFetchWithPaymentFromConfig(fetch, {
   schemes: [{ network: "eip155:8453", client: new ExactEvmScheme(account) }],
 });
 
-// ---- 真值：三所中位數 ----
-async function truth(sym: "BTC" | "ETH"): Promise<number | null> {
+// ---- 真值 v1：計價基準歸一化 ----
+// 教訓（2026-08-18）：USDT 交易對與 USD 交易對混著取中位數，會產生 ~10bps 系統性偏差。
+// 修正：抓 USDT/USD 匯率，把 USDT 報價換算成 USD 後再取中位數；同時保留 USDT 基準供比對。
+const median = (v: number[]) => { v.sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+async function truth(sym: "BTC" | "ETH"): Promise<{ usd: number; usdt: number } | null> {
   const j = async (u: string) => { try { const r = await fetch(u, { signal: AbortSignal.timeout(5000) }); return await r.json(); } catch { return null; } };
-  const [bn, ok, cb] = await Promise.all([
+  const [bn, ok, cb, tether] = await Promise.all([
     j(`https://api.binance.com/api/v3/ticker/price?symbol=${sym}USDT`),
     j(`https://www.okx.com/api/v5/market/ticker?instId=${sym}-USDT`),
     j(`https://api.exchange.coinbase.com/products/${sym}-USD/ticker`),
+    j(`https://api.exchange.coinbase.com/products/USDT-USD/ticker`),
   ]);
-  const vals = [Number(bn?.price), Number(ok?.data?.[0]?.last), Number(cb?.price)].filter((n) => Number.isFinite(n) && n > 0);
-  if (vals.length < 2) return null;
-  vals.sort((a, b) => a - b);
-  return vals[Math.floor(vals.length / 2)];
+  const inUsdt = [Number(bn?.price), Number(ok?.data?.[0]?.last)].filter((n) => Number.isFinite(n) && n > 0);
+  const cbUsd = Number(cb?.price);
+  const rate = Number(tether?.price); // 1 USDT 值多少 USD
+  if (!inUsdt.length || !Number.isFinite(cbUsd) || !Number.isFinite(rate) || rate <= 0) return null;
+  const usdAll = [...inUsdt.map((p) => p * rate), cbUsd];          // 全部換算成 USD 基準
+  const usdtAll = [...inUsdt, cbUsd / rate];                        // 全部換算成 USDT 基準
+  return { usd: median(usdAll), usdt: median(usdtAll) };
 }
 
-// ---- 從任意 JSON 回應裡撈幣價（範圍過濾 + 欄位名啟發式）----
+// ---- 從任意 JSON 回應裡撈幣價（範圍過濾 + 欄位名啟發式 + 預言機 canonical 字串）----
 function extractPrice(x: unknown, sym: "BTC" | "ETH"): number | null {
   const [lo, hi] = sym === "BTC" ? [5000, 1000000] : [100, 100000];
+  // 簽名預言機格式，如 "v1|PRICE|BTCUSD|64093.53|USD|…"（myceliasignal 型）
+  const canon = JSON.stringify(x ?? "").match(new RegExp(`PRICE\\|${sym}[A-Z]*\\|(\\d+(?:\\.\\d+)?)`));
+  if (canon) { const n = Number(canon[1]); if (n >= lo && n <= hi) return n; }
   let best: number | null = null;
   const walk = (v: unknown, key: string) => {
     if (typeof v === "number" || (typeof v === "string" && /^\d+(\.\d+)?$/.test(v))) {
@@ -105,13 +115,20 @@ for (const t of TARGETS) {
     const p = extractPrice((() => { try { return JSON.parse(raw); } catch { return null; } })(), t.sym);
     if (p === null) verdict = "🟡 有出貨但撈不到價格（回應已存證，待人工看格式）";
     else if (ref === null) verdict = `🟡 報價 ${p}（真值源暫不可用）`;
-    else { bps = Math.abs(p - ref) / ref * 10000; verdict = `${bps < 10 ? "✅" : bps < 50 ? "🟠" : "🚨"} 報價 ${p} vs 三所中位 ${ref}｜誤差 ${bps.toFixed(1)} bps`; }
+    else {
+      const eUsd = Math.abs(p - ref.usd) / ref.usd * 10000;
+      const eUsdt = Math.abs(p - ref.usdt) / ref.usdt * 10000;
+      const basis = eUsd <= eUsdt ? "USD" : "USDT";
+      bps = Math.min(eUsd, eUsdt);
+      verdict = `${bps < 10 ? "✅" : bps < 50 ? "🟠" : "🚨"} 報價 ${p}（判定 ${basis} 基準）vs 中位 ${basis === "USD" ? ref.usd.toFixed(2) : ref.usdt.toFixed(2)}｜誤差 ${bps.toFixed(1)} bps`;
+    }
   } else verdict = "✅ 有出貨（非幣價類，只驗交付）";
 
   rows.push(`${verdict}｜${t.name}｜$${o.usd}｜${ms}ms${tx ? "" : "｜未扣款"}`);
   appendFileSync(new URL("../log/probe-round-1.jsonl", import.meta.url), JSON.stringify({
     t_send: tSend, name: t.name, url: t.url, price_usd: o.usd, http_status: status,
-    latency_ms: ms, ref_price: ref, err_bps: bps, tx, body_sha256: createHash("sha256").update(raw).digest("hex"),
+    latency_ms: ms, ref_usd: ref?.usd ?? null, ref_usdt: ref?.usdt ?? null, err_bps: bps,
+    tx, body_sha256: createHash("sha256").update(raw).digest("hex"),
     raw: raw.slice(0, 2000),
   }) + "\n");
 }
