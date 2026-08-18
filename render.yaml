@@ -1,0 +1,19 @@
+# Render Blueprint：在 Render 儀表板選 New → Blueprint → 選這個 repo，會自動照這份設定建服務
+# 三把 CDP 鑰匙標 sync: false，建立時 Render 會跳出欄位要你貼（不會存在 repo 裡）
+services:
+  - type: web
+    name: x402-stall
+    runtime: node
+    rootDir: seller
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: X402_ENV
+        value: production
+      - key: CDP_API_KEY_ID
+        sync: false
+      - key: CDP_API_KEY_SECRET
+        sync: false
+      - key: CDP_WALLET_SECRET
+        sync: false
