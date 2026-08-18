@@ -1,0 +1,47 @@
+# 引擎 v1 的鬧鐘：每小時付費探測一輪，每天釘一次鏈上封條
+# 存證（day1/log、day1/anchors）由機器人自動 commit 回 repo——公開透明
+name: probe-engine
+on:
+  schedule:
+    - cron: "7 * * * *"    # 每小時探測（腳本前再加 0–9 分隨機延遲，防被賣家識別規律）
+    - cron: "40 23 * * *"  # 每日封條（台灣時間早上 07:40）
+  workflow_dispatch: {}
+concurrency:
+  group: probe-engine
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: day1/package-lock.json
+      - run: npm ci
+        working-directory: day1
+      - name: 隨機延遲（僅整點排程）
+        if: github.event.schedule == '7 * * * *'
+        run: sleep $((RANDOM % 540))
+      - name: 探測一輪
+        if: github.event.schedule != '40 23 * * *'
+        run: npm run probe
+        working-directory: day1
+        env:
+          EVM_PRIVATE_KEY: ${{ secrets.EVM_PRIVATE_KEY }}
+      - name: 每日封條
+        if: github.event.schedule == '40 23 * * *'
+        run: npm run anchor
+        working-directory: day1
+        env:
+          EVM_PRIVATE_KEY: ${{ secrets.EVM_PRIVATE_KEY }}
+      - name: 提交存證
+        run: |
+          git config user.name "probe-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add day1/log day1/anchors
+          git diff --cached --quiet || git commit -m "probe: $(date -u +%FT%TZ)"
+          git pull --rebase origin main && git push

@@ -6,6 +6,8 @@
     "new-wallet": "tsx src/new-wallet.ts",
     "check": "tsx src/check-wallet.ts",
     "probe": "tsx src/probe-round.ts",
+    "bridge-eth": "tsx src/bridge-eth.ts",
+    "anchor": "tsx src/anchor.ts",
     "buy": "tsx src/buy.ts",
     "scan": "tsx src/scan-bazaar.ts"
   },
