@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "new-wallet": "tsx src/new-wallet.ts",
+    "check": "tsx src/check-wallet.ts",
     "buy": "tsx src/buy.ts",
     "scan": "tsx src/scan-bazaar.ts"
   },
