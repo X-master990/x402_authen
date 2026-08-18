@@ -5,6 +5,7 @@
   "scripts": {
     "new-wallet": "tsx src/new-wallet.ts",
     "check": "tsx src/check-wallet.ts",
+    "probe": "tsx src/probe-round.ts",
     "buy": "tsx src/buy.ts",
     "scan": "tsx src/scan-bazaar.ts"
   },
