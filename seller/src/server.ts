@@ -26,6 +26,9 @@ const server = await createX402Server({
 });
 
 const app = express();
+// Render/Fly 這類平台的反向代理在前面終結 TLS，要信任 X-Forwarded-Proto
+// 否則開價單裡的 resource.url 會自報成 http://，買方照著重試就會 404
+app.set("trust proxy", 1);
 
 // 免費健康檢查（部署平台要用，也讓人不付錢就能看到攤位介紹）
 app.get("/", (_req, res) =>
