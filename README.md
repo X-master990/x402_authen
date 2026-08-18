@@ -12,7 +12,8 @@
 | `docs/02-day1-runbook.md` | Day 1 執行手冊：開錢包 → 換 USDC → 第一筆 x402 付費呼叫 |
 | `docs/03-content-calendar.md` | 13 週中文長文題目 + 每日英文 X 短帖模板 |
 | `docs/04-legal.md` | 法律自保：方法論頁範本、代號規則、免責聲明、上線檢查表 |
-| `day1/` | Day 1 可執行腳本（買方第一筆付款） |
+| `day1/` | Day 1 可執行腳本（買方第一筆付款）＋錢包工具（new-wallet / check） |
+| `seller/` | Day 2–3 賣方攤位：`/hello-402` 付費 endpoint（$0.01/次，經 CDP facilitator 自動上架 Bazaar） |
 
 ## 現在該做什麼
 
