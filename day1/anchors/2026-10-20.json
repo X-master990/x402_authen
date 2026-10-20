@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-20",
+  "merkle_root": "e641f8accffcb7fc64815b7fdbde0294c730283ded118ab63a88eb031bcdf405",
+  "leaves": 4845,
+  "files": {
+    "probe-round-1.jsonl": {
+      "lines": 4841,
+      "file_sha256": "a98a60ea2a3788911c8002cbd14379d55fa8f07e30ccd071e9c326e6102a2edc"
+    },
+    "receipts.jsonl": {
+      "lines": 4,
+      "file_sha256": "e535cc6e87e187d4da770a64fe4f932f2fe74a595d2da54d712f59021dc05648"
+    }
+  },
+  "chain": "base (eip155:8453)",
+  "tx": "0x930cb2364d5957d390972e32368df45d1cd954fcabd6727c0aef5030d6fafc46",
+  "anchored_by": "0x7D431E7Eaeb55482fdF4B8962D18fEE3b02E1280",
+  "how_to_verify": "sha256 each line of each file as leaves; pair-concat-hash upward (odd leaf pairs with itself); root must equal last 32 bytes of tx calldata"
+}
